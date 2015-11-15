@@ -87,30 +87,37 @@ int main(int argc, char * argv[])
 			scanf("%s", filename);
 			if(DEBUG==1) printf("file being sent: %s\n", filename);
 			int res = opREQ(s, filename);
-			if(res!=0) printf("REQ Error: %d", res);
+			if(res!=0) printf("REQ Error: %d\n", res);
 
 		} else if (strcmp(buf, "UPL") == 0) {
-			if(DEBUG==1) printf("command: %s", buf);
+			if(DEBUG==1) printf("command: %s\n", buf);
 			printf("Please enter a file to upload:\n");
 			scanf("%s", filename);
 			if(DEBUG==1) printf("file being upload: %s\n", filename);
 			int res = opUPL(s, filename);
-			if(res!=0) printf("REQ Error: %d", res);
+			if(res!=0) printf("REQ Error: %d\n", res);
 
 		} else if (strcmp(buf, "DEL") == 0) {
-			if(DEBUG==1) printf("command: %s", buf);
+			if(DEBUG==1) printf("command: %s\n", buf);
 			
 			printf("Please enter a file to upload:\n");
 			scanf("%s", filename);
 
 			int res = opDEL(s,filename);
-			if(res!=0) printf("DEL Error: %d", res);
+			if(res!=0) printf("DEL Error: %d\n", res);
 
 		} else if (strcmp(buf, "LIS") == 0) {
-			if(DEBUG==1) printf("command: %s", buf);
+			if(DEBUG==1) printf("command: %s\n", buf);
+			
+			//sprintf(sendline, "LIS");
+			//if(send(s, sendline, strlen(sendline), 0)==-1){
+			//	perror("client sending LIS command!");
+			//	exit(1);
+			//}
+			//clearline(sendline);
 			
 			int res = opLIS(s);
-			if(res!=0) printf("LIS Error: %d", res);
+			if(res!=0) printf("LIS Error: %d\n", res);
 		}
 		//Clear sendline var
 		clearline(sendline);
@@ -285,19 +292,23 @@ int opLIS(int s){
 		// rec each item's name
 		// print it
 	
-	sprintf(sendline, "LIS");
-	if(send(s, sendline, strlen(sendline), 0)==-1){
-		perror("client sending LIS command!");
-		exit(1);
-	}
+	//sprintf(sendline, "LIS");
+	//if(send(s, sendline, strlen(sendline), 0)==-1){
+	//	perror("client sending LIS command!");
+	//	exit(1);
+	//}
+	clearline(sendline);
 	int num_files, temp;
 	if ((temp=(recv(s, &num_files, sizeof(num_files), 0))) == -1)    {
 		perror("client recieved error");
 		exit(1);
 	}
+	if(DEBUG==1) printf("number recieved: %i\n", num_files);
 	
 	int i;
 	for(i=0; i<num_files; i++){
+		clearline(recline);
+		clearline(sendline);
 		if ((recv(s, recline, sizeof(recline), 0)) == -1)    {
 			perror("error receiving filename from server\n");
 			exit(1);
@@ -305,7 +316,11 @@ int opLIS(int s){
 		else{
 			printf("filename %i: %s \n", i, recline);
 		}
-		clearline(recline);
+		sprintf(sendline, recline);
+		if(send(s, sendline, strlen(sendline), 0)==-1){
+			perror("error sending confirmation");
+			exit(1);
+		}
 	}
 	
 	
