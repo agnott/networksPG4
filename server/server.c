@@ -8,9 +8,15 @@
 #include<netinet/in.h>	
 #include<netdb.h>	
 #include<openssl/md5.h>
+#include<dirent.h>
 #define MAX_PENDING 1
 #define MAX_LINE 10000
 #define	MAX_FILE_SIZE 1024
+
+void sendError(void);
+void recvError(void);
+void listDirectory( int s );
+void deleteFile( int s );
 
 struct recvInfo{
 	short int filename_len;
@@ -184,7 +190,7 @@ int main(int argc, char*argv[]){
 			printf("recieved: %s\n", buf);
 			memset(buf, 0, strlen(buf));
 
-			//Receiving size of file nam
+			//Receiving size of file name
 			if((len = recv(new_s, buf, sizeof(buf),0)) == -1){
 				perror("Server Received Error!");
 				exit(1);
@@ -205,43 +211,44 @@ int main(int argc, char*argv[]){
 			strcpy(info.filename, buf);
 			FILE *file;
 			file=fopen(info.filename, "w+");
-			if (file == NULL)       {
-                                printf("Could not open file\n");
-
-                        }
-                        int downloaded=0;       //keep track of total characters downloaded
-                        int buffer_len=0;       //keep track of buffer length so last packet is correct size
+			if (file == NULL){
+      	printf("Could not open file\n");
+			}
+			
+			int downloaded=0;       //keep track of total characters downloaded
+			int buffer_len=0;       //keep track of buffer length so last packet is correct size
 			int file_size;
 			//client should send size of file to server
-                        while (downloaded < file_size)  {
-                                //while client has not received the entire file size...
-                                 if ((file_size - downloaded) >= MAX_LINE)       {
-                                        buffer_len=MAX_LINE;
-                                }       else    {
-                                        buffer_len=(file_size-downloaded);
-                                }
+      while (downloaded < file_size){
+        
+        //while client has not received the entire file size...
+        if ((file_size - downloaded) >= MAX_LINE){
+        	buffer_len=MAX_LINE;
+        }else{
+        	buffer_len=(file_size-downloaded);
+        }
 
-                                //receive packet from server and read into buf buffer
+		    //receive packet from server and read into buf buffer
 
-                                if ((recv(s, buf, buffer_len, 0)) == -1)    {
-                                        perror("error receiving file from server\n");
-                                        exit(1);
-                                }
-                                //write contents of buffer directly into file and clear buffer
-                                fwrite(buf, sizeof(char), buffer_len, file);
-                                bzero(buf, buffer_len);
-                                downloaded+=buffer_len; //increment size of downloaded file
+		    if ((recv(s, buf, buffer_len, 0)) == -1){
+          perror("error receiving file from server\n");
+          exit(1);
+		    }
+		    //write contents of buffer directly into file and clear buffer
+		    fwrite(buf, sizeof(char), buffer_len, file);
+		    bzero(buf, buffer_len);
+		    downloaded+=buffer_len; //increment size of downloaded file
 
-
-			memset(buf,0,strlen(buf));
-
+				memset(buf,0,strlen(buf));
+			}
 			//initialize file pointer to open file 
 
 		} else if (strcmp(buf, "LIS")==0) {
 			//LIS case
+			listDirectory(new_s);
 		} else if (strcmp(buf, "DEL")==0) {
 			//DEL case
-
+			deleteFile(new_s);
 		} else if (strcmp(buf, "XIT")==0) {
 			//XIT case
 			close(new_s);
@@ -249,3 +256,102 @@ int main(int argc, char*argv[]){
 		return 0;
 	}
 };
+
+// Function to send contents of directory to client one-by-one
+void listDirectory( int s ){
+	int i;
+	char buffer[100];
+	
+	//Two loops: 1. file size, 2. each item in directory
+	for(i=0; i<2; i++){
+	
+		DIR *d;
+		struct dirent *dir;
+		int dirSize = 0;
+		d = opendir(".");
+		
+		//If there is no errror opening directory
+		if (d){
+		 
+		 	//Loop and perform actions while filename is not ".", ".."
+		  while ( (dir = readdir(d)) != NULL){
+		  	if( strcmp(dir->d_name,".") != 0 && strcmp(dir->d_name, "..") != 0 ){
+				 
+				  if( i == 0 ){ //Compute directory size
+				  	dirSize++;
+				  }else{ //Send directory contents
+				  	//sprintf(buffer, "%s", dir->d_name);
+				  	if( send(s, dir->d_name, strlen(dir->d_name), 0) == -1 ){
+							sendError();
+						}
+	  				//Receive a confirmation to see if client got filename
+						if( recv(s, buffer, sizeof(buffer), 0) == -1 ){
+							printf("error communicating directory\n");
+							return;
+						}
+						printf("RECV: %s\n", buffer);
+						//Clear the buffer
+	  				memset(buffer,0,sizeof(buffer));
+				  }
+				  
+		    }
+		  }
+		 
+		 	closedir(d);
+		 
+		 	//Send number of files during first pass
+		  if(i == 0){
+		  	if( send(s, &dirSize, sizeof(dirSize), 0) == -1 ){
+		  		sendError();
+		  	}
+		  }
+		}
+  }
+}
+
+void deleteFile( int s ){
+	char buffer[100];
+	char fileName[100];
+	int recvLength, nameLength;
+	
+	//Clear the buffer
+	memset(buffer,0,strlen(buffer));
+	
+	//Listen for file name length
+	if( ( recvLength = recv( s, buffer, sizeof(buffer), 0) ) == -1 ){
+		recvError();
+	}
+	
+	nameLength = atoi( buffer );
+	
+	//Clear the buffer
+	memset(buffer,0,strlen(buffer));
+	
+	//Listen for the name of file
+	if( ( recvLength = recv( s, buffer, sizeof(buffer), 0) ) == -1 ){
+		recvError();
+	}	
+	
+	//Get file name
+	strcpy(fileName, buffer);
+	
+	//Clear the buffer
+	memset(buffer,0,strlen(buffer));
+
+	//If string information doesn't match, send negative (-1)
+	if( strlen(buffer) != nameLength ){
+		sprintf(buffer, "%i", -1);
+	}
+	
+	
+
+}
+
+void sendError(void){
+	perror("Data not sent successfully...\n");
+	exit(1);
+}
+void recvError(void){
+	perror("Data not received successfully...\n");
+	exit(1);
+}
