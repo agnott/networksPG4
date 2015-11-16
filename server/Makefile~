@@ -1,6 +1,6 @@
 CMP = gcc
 FLAGS = -lssl -lcrypto -g -Wall
-FNAME = myftp
+FNAME = server
 
 all: server
 
