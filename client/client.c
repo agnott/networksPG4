@@ -5,12 +5,14 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <unistd.h>
 //#include <mhash.h>
 #include <openssl/md5.h>
 #define MAX_LINE 1024
+#define	MAX_FILE_SIZE 1024
 #define DEBUG 1
 
 char sendline[MAX_LINE];
@@ -248,9 +250,29 @@ int opUPL(int s, char *filename){
 	clearline(sendline);
 	clearline(recline);
 
+	unsigned char fileData[MAX_FILE_SIZE];
+	
+	//initialize file pointer to open file 
+	FILE *fp;
+	struct stat st;
+
+	//set up file path to afs directory
+	char path[200];
+	bzero(path, 200);
+	//strcat(path, "/afs/nd.edu/coursefa.15/cse/cse30264.01/files/program4/");
+	strcat(path, filename);
+
+	// Check if file exists
+	int file_size=0;
+	if(stat(path, &st) != 0){
+		printf("File does not exist.\n");
+		exit(1);
+	}
+	
 	short int filename_len = strlen(filename);
 	//Send length of file name
 	sprintf(sendline, "%d", filename_len);
+	printf("len: %s\n", sendline);
 	if(send(s, sendline, strlen(sendline), 0)==-1){
 		perror("client send error!");
 		exit(1);
@@ -258,14 +280,111 @@ int opUPL(int s, char *filename){
 
 	//Clear sendline var
 	clearline(sendline);
+	
+	if ((recv(s, recline, sizeof(recline), 0)) == -1){
+		perror("error receiving confirmation from server\n");
+		exit(1);
+	}
+	else{
+		printf("%s\n", recline);
+	}
+	
+	clearline(recline);
 
 	//Send the filename
-	sprintf(sendline, "%s", filename);
+	sprintf(sendline, "%s", path);
+	printf("name: %s\n", sendline);
 	if(send(s, sendline, strlen(sendline), 0)==-1){
 		perror("client send error!");
 		exit(1);
 	}
 	
+	//Clear sendline var
+	clearline(sendline);
+
+	// Open File
+	fp=fopen(path, "rt");
+	if(fp==NULL){
+		printf("Error opening file.\n");
+		exit(1);
+	}
+
+	// send filesize back to server.
+	fseek(fp, 0L, SEEK_END);
+	file_size = ftell(fp);
+	sprintf(sendline, "%d", file_size);
+	if(DEBUG==1) printf("filesize: %s\n", sendline);
+	//if(DEBUG==1) printf("%i\n", file_size);
+	if(send(s, &sendline, sizeof(sendline), 0) == -1)	{
+		perror("server send error!");
+		exit(1);
+	}
+	rewind(fp);	//rewind file pointer to compute hash
+	clearline(sendline);
+	
+	// Send file contents to server.
+	//rewind file pointer to send contents of file
+	rewind(fp);
+	int n;
+	//initially clear buffer that file data will be read into
+	bzero(fileData, MAX_FILE_SIZE);
+	//while there is still data being read...
+	//send the packet and clear buffer to keep sending packets
+	while ((n=fread(fileData, sizeof(char), MAX_FILE_SIZE, fp)) > 0) {
+		if(DEBUG==1) printf("%s\n", fileData);
+		if (send(s, fileData, n, 0) == -1)	{
+			perror("File data not sent successfully...\n");
+			exit(1);
+		}	
+		bzero(fileData, MAX_FILE_SIZE);
+	}
+	rewind(fp);
+
+	// Determines MD5 hash value of the file.
+	MD5_CTX mdContext;
+	int bytes;
+	unsigned char data[1024];
+	unsigned char c[MD5_DIGEST_LENGTH];
+
+	MD5_Init (&mdContext);
+	while ((bytes = fread (data, 1, 1024, fp)) != 0)
+		MD5_Update (&mdContext, data, bytes);
+	MD5_Final (c,&mdContext);
+
+	/*if MD5 values don't match, signal error and exit */
+	int j;
+	for(j = 0; j < MD5_DIGEST_LENGTH; j++) printf("%02x", c[j]);
+	printf ("\n");
+	
+	// Send MD5 hash value of the file back to the server.
+	if (send(s, c, sizeof(c), 0) == -1)	{
+		perror("Hash not sent successfully...\n");
+		exit(1);
+	}
+	clearline(sendline);
+
+	clearline(recline);
+	if ((recv(s, recline, sizeof(recline), 0)) == -1){
+		perror("error receiving confirmation from server\n");
+		exit(1);
+	}
+	printf("%s\n", recline);
+	printf("%i\n", (int)strlen(recline));
+	
+	if(strcmp(recline, "-1")==0){
+		printf("Transfer unsuccessful.\n");	
+	}
+	else{
+		printf("throughput: %s\n", recline);	
+	}
+	clearline(recline);
+	
+	/* Close file */
+	fclose(fp);
+
+	/* Cleanup */
+	bzero(fileData, MAX_FILE_SIZE);
+
 	return 0;
 }
 
@@ -364,18 +483,7 @@ int opDEL(int s, char *filename){
 int opLIS(int s){
 	clearline(sendline);
 	clearline(recline);
-	//send LIS
-	//rec char *, = size of directory as int
-	// loop # items long
-		// rec each item's name
-		// print it
-	
-	//sprintf(sendline, "LIS");
-	//if(send(s, sendline, strlen(sendline), 0)==-1){
-	//	perror("client sending LIS command!");
-	//	exit(1);
-	//}
-	clearline(sendline);
+
 	int num_files, temp;
 	if ((temp=(recv(s, &num_files, sizeof(num_files), 0))) == -1)    {
 		perror("client recieved error");
