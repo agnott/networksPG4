@@ -4,7 +4,8 @@
 #include<unistd.h>
 #include<sys/stat.h>
 #include<sys/types.h>	
-#include<sys/socket.h>	
+#include<sys/socket.h>
+#include <sys/time.h>	
 #include<netinet/in.h>	
 #include<netdb.h>	
 #include<openssl/md5.h>
@@ -17,6 +18,7 @@ void sendError(void);
 void recvError(void);
 void listDirectory( int s );
 void deleteFile( int s );
+void uploadFile( int s );
 
 struct recvInfo{
 	short int filename_len;
@@ -87,7 +89,7 @@ int main(int argc, char*argv[]){
 		}
 		if (strcmp(buf, "REQ")==0)  {
 			//case "REQ":
-			printf("recieved: %s\n", buf);
+			//printf("recieved: %s\n", buf);
 			memset(buf, 0, strlen(buf));
 
 			//Receiving size of file nam
@@ -122,7 +124,7 @@ int main(int argc, char*argv[]){
 
 			/* Check if file exists */		
 			int file_size=0;
-			if(stat(path, &st) != 0){
+			if( stat(path, &st) != 0){
 				printf("File does not exist.\n");
 				file_size=-1;
 				if (send(new_s, &file_size, sizeof(file_size), 0) ==-1)	{
@@ -148,6 +150,7 @@ int main(int argc, char*argv[]){
 				exit(1);
 			}
 			rewind(fp);	//rewind file pointer to compute hash
+			
 			/* Determines MD5 hash value of the file. */
 			MD5_CTX mdContext;
 			int bytes;
@@ -187,6 +190,10 @@ int main(int argc, char*argv[]){
 			bzero(fileData, MAX_FILE_SIZE);
 		} else if (strcmp(buf, "UPL")==0)	{
 			//UPL case
+			uploadFile( new_s );
+			
+			/*
+			//UPL case
 			printf("recieved: %s\n", buf);
 			memset(buf, 0, strlen(buf));
 
@@ -215,9 +222,10 @@ int main(int argc, char*argv[]){
       	printf("Could not open file\n");
 			}
 			
-			int downloaded=0;       //keep track of total characters downloaded
-			int buffer_len=0;       //keep track of buffer length so last packet is correct size
-			int file_size;
+			int downloaded = 0; //keep track of total characters downloaded
+			int buffer_len = 0; //keep track of buffer length so last packet is correct size
+			int file_size = ;
+			
 			//client should send size of file to server
       while (downloaded < file_size){
         
@@ -240,7 +248,7 @@ int main(int argc, char*argv[]){
 		    downloaded+=buffer_len; //increment size of downloaded file
 
 				memset(buf,0,strlen(buf));
-			}
+			}*/
 			//initialize file pointer to open file 
 
 		} else if (strcmp(buf, "LIS")==0) {
@@ -256,6 +264,154 @@ int main(int argc, char*argv[]){
 		return 0;
 	}
 };
+
+//Functoin to upload a file
+void uploadFile( int s ){
+	struct timeval start, end;
+	char buffer[1024];
+	char fileName[250];
+	int fileSize, nameLength, confirmation, downloaded, bufferLength;
+
+	//Clear the buffer
+	memset(buffer,0,sizeof(buffer));
+	
+	//Listen for file name length
+	if( recv( s, buffer, sizeof(buffer), 0) == -1 ){
+		recvError();
+	}
+	nameLength = atoi( buffer );
+
+	//Clear the buffer
+	memset(buffer,0,sizeof(buffer));
+
+	//Send confirmation of received file name length
+	confirmation = 1;
+	if( send( s, &confirmation, sizeof(confirmation), 0 ) == -1 ){
+		sendError();
+	}
+	
+	//Listen for the name of file
+	if( recv( s, buffer, sizeof(buffer), 0) == -1 ){
+		recvError();
+	}	
+	strcpy(fileName, buffer);
+
+	//Clear the buffer
+	memset(buffer,0,sizeof(buffer));
+
+	//Print
+	printf("Filename: %s\n", fileName);
+	printf("Length: %i\n", nameLength);
+
+	//Sends a confirmation
+	if( nameLength != strlen(fileName) ){
+		confirmation = -1;
+	}else{
+		confirmation = 1;
+	}
+	if( send(s, &confirmation, sizeof(confirmation), 0) == -1 ){
+		sendError();
+	}
+	
+	//Receives size of file
+	if( recv( s, buffer, sizeof(buffer), 0 ) == -1 ){
+		recvError();
+	}
+	fileSize = atoi( buffer );
+	printf("File size: %i\n", fileSize);
+	
+	//Clear buffer
+	memset(buffer, 0, sizeof(buffer));
+	
+	//Open the file
+	FILE *fp;
+	fp = fopen(fileName, "w+");
+	
+	//Download the file
+	downloaded = 0;
+	bufferLength = 0;
+	gettimeofday(&start, NULL);
+	while( downloaded < fileSize ){
+		//Handle the case of the last downloaded piece
+    if ((fileSize - downloaded) >= 1024){
+    	bufferLength = 1024;
+    }else{
+    	bufferLength = fileSize - downloaded;
+    }
+    
+    //receive packet from server and read into buf buffer
+    if ( recv(s, buffer, bufferLength, 0) == -1){
+      perror("error receiving file from server\n");
+      exit(1);
+    }
+	
+		//write contents of buffer directly into file and clear buffer
+    fwrite(buffer, sizeof(char), bufferLength, fp);
+    memset(buffer, 0, sizeof(buffer));
+	
+		//Add to downloaded total
+		downloaded += bufferLength;
+		
+		printf("Downloaded: %i\n", downloaded);
+	}
+	gettimeofday(&end, NULL);
+	rewind(fp);
+	
+	//Calculate MD5 hash
+	MD5_CTX mdContext;
+	int bytes;
+	unsigned char data[1024];
+	unsigned char c[MD5_DIGEST_LENGTH];
+
+	MD5_Init (&mdContext);
+	while ((bytes = fread (data, 1, 1024, fp)) != 0)
+		MD5_Update (&mdContext, data, bytes);
+	MD5_Final (c,&mdContext);
+	
+	//Clear buffer
+	memset(buffer, 0, sizeof(buffer));
+	
+	//Receive MD5 hash from client
+	if( recv(s, buffer, MD5_DIGEST_LENGTH, 0) == -1 ){
+		recvError();
+	}
+	
+	confirmation = 1;
+	int i;
+	for (i=0; i < MD5_DIGEST_LENGTH; i++){
+		if (c[i] != (unsigned char)buffer[i]){
+			printf("error: hashes do not match\n");
+			
+			confirmation = -1;
+	
+			remove(fileName);
+		}
+	}
+	
+	//Clear buffer
+	memset(buffer, 0, sizeof(buffer));
+	
+	//Send correct values to client
+	if(confirmation == 1){
+		//Compare hashes
+		float throughput = (fileSize/1000000.)/((end.tv_sec+end.tv_usec/1000000.)- (start.tv_sec + start.tv_usec/1000000.));
+		
+		//Write throughput to string
+		sprintf(buffer, "%f", throughput);
+	}else{
+		sprintf(buffer, "-1");
+	}
+
+	//Send confirmation of throughput if hashed match
+	printf("THROUGHPUT: %s\n", buffer);
+	sprintf(buffer, "THIS IS A STRING FOR SURE");
+	printf("LENGTH: %i\n", (int)strlen(buffer));
+	if( send( s, buffer, (int)strlen(buffer), 0) == -1 ){
+		sendError();
+	}
+	
+	fclose(fp);
+}
 
 // Function to send contents of directory to client one-by-one
 void listDirectory( int s ){
@@ -279,17 +435,19 @@ void listDirectory( int s ){
 				 
 				  if( i == 0 ){ //Compute directory size
 				  	dirSize++;
-				  }else{ //Send directory contents
-				  	//sprintf(buffer, "%s", dir->d_name);
+				  }else{ 
+				  
+				  	//Send directory contents
 				  	if( send(s, dir->d_name, strlen(dir->d_name), 0) == -1 ){
 							sendError();
 						}
+						
 	  				//Receive a confirmation to see if client got filename
 						if( recv(s, buffer, sizeof(buffer), 0) == -1 ){
 							printf("error communicating directory\n");
 							return;
 						}
-						printf("RECV: %s\n", buffer);
+
 						//Clear the buffer
 	  				memset(buffer,0,sizeof(buffer));
 				  }
@@ -336,7 +494,7 @@ void deleteFile( int s ){
 	//Clear the buffer
 	memset(buffer,0,sizeof(buffer));
 
-	//If string information doesn't match, send negative (-1)
+	//If string information doesn't match, confirmation is negative (-1)
 	if( strlen(fileName) != nameLength ){
 		confirmation = -1;
 	}else{
