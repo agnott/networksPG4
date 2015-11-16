@@ -1,8 +1,8 @@
 #include<stdio.h>	 
 #include<stdlib.h>	  
 #include<string.h>	
-#include <unistd.h>
-#include <sys/stat.h>
+#include<unistd.h>
+#include<sys/stat.h>
 #include<sys/types.h>	
 #include<sys/socket.h>	
 #include<netinet/in.h>	
@@ -310,9 +310,10 @@ void listDirectory( int s ){
 }
 
 void deleteFile( int s ){
+	struct stat sts;
 	char buffer[100];
 	char fileName[100];
-	int recvLength, nameLength;
+	int recvLength, nameLength, confirmation;
 	
 	//Clear the buffer
 	memset(buffer,0,strlen(buffer));
@@ -321,9 +322,8 @@ void deleteFile( int s ){
 	if( ( recvLength = recv( s, buffer, sizeof(buffer), 0) ) == -1 ){
 		recvError();
 	}
-	
 	nameLength = atoi( buffer );
-	
+
 	//Clear the buffer
 	memset(buffer,0,strlen(buffer));
 	
@@ -331,20 +331,57 @@ void deleteFile( int s ){
 	if( ( recvLength = recv( s, buffer, sizeof(buffer), 0) ) == -1 ){
 		recvError();
 	}	
-	
-	//Get file name
 	strcpy(fileName, buffer);
+
+	//Clear the buffer
+	memset(buffer,0,sizeof(buffer));
+
+	//If string information doesn't match, send negative (-1)
+	if( strlen(fileName) != nameLength ){
+		confirmation = -1;
+	}else{
+		confirmation = 1;
+	}
 	
+	//Check if file exists
+	if( stat(fileName, &sts) == -1 ){
+		confirmation = -1;
+	}
+	
+	//Send confirmation to client
+	if( send(s, &confirmation, sizeof(confirmation), 0) == -1){
+		sendError();
+	}
+	
+	//Return if confirmation was negative, aka something above went wrong
+	if( confirmation == -1 ){ return; }
+
 	//Clear the buffer
 	memset(buffer,0,strlen(buffer));
 
-	//If string information doesn't match, send negative (-1)
-	if( strlen(buffer) != nameLength ){
-		sprintf(buffer, "%i", -1);
+	//Receive confirmation of delete
+	if( recv(s, buffer, sizeof(buffer), 0) == -1){
+		recvError();
 	}
-	
-	
 
+	//If compare is yes, delete file
+	if( strcmp(buffer, "yes") == 0 || strcmp(buffer, "Yes") == 0 ){
+		
+		//Attempt to remove file
+		if( remove(fileName) == -1 ){
+			confirmation = -1;
+		}else{
+			confirmation = 1;
+		}
+		
+		//Send confirmation to client that file was deleted
+		if( send(s, &confirmation, sizeof(confirmation), 0) == -1){
+			sendError();
+		}
+		
+	}
+
+	return;
 }
 
 void sendError(void){
