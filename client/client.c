@@ -88,7 +88,7 @@ int main(int argc, char * argv[])
 			if(DEBUG==1) printf("file being sent: %s\n", filename);
 			int res = opREQ(s, filename);
 			if(res!=0) printf("REQ Error: %d\n", res);
-
+		//UPL
 		} else if (strcmp(buf, "UPL") == 0) {
 			if(DEBUG==1) printf("command: %s\n", buf);
 			printf("Please enter a file to upload:\n");
@@ -96,25 +96,18 @@ int main(int argc, char * argv[])
 			if(DEBUG==1) printf("file being upload: %s\n", filename);
 			int res = opUPL(s, filename);
 			if(res!=0) printf("REQ Error: %d\n", res);
-
+		//DEL
 		} else if (strcmp(buf, "DEL") == 0) {
 			if(DEBUG==1) printf("command: %s\n", buf);
 			
-			printf("Please enter a file to upload:\n");
+			printf("Please enter a file to delete: \n");
 			scanf("%s", filename);
-
+			if(DEBUG==1) printf("file being deleted: %s\n", filename);
 			int res = opDEL(s,filename);
 			if(res!=0) printf("DEL Error: %d\n", res);
-
+		//LIS
 		} else if (strcmp(buf, "LIS") == 0) {
 			if(DEBUG==1) printf("command: %s\n", buf);
-			
-			//sprintf(sendline, "LIS");
-			//if(send(s, sendline, strlen(sendline), 0)==-1){
-			//	perror("client sending LIS command!");
-			//	exit(1);
-			//}
-			//clearline(sendline);
 			
 			int res = opLIS(s);
 			if(res!=0) printf("LIS Error: %d\n", res);
@@ -279,7 +272,92 @@ int opUPL(int s, char *filename){
 int opDEL(int s, char *filename){
 	clearline(sendline);
 	clearline(recline);
+	
+	short int filename_len = strlen(filename);
+	//Send length of file name
+	sprintf(sendline, "%d", filename_len);
+	if(send(s, sendline, strlen(sendline), 0)==-1){
+		perror("client send error!");
+		exit(1);
+	}
 
+	//Clear sendline var
+	clearline(sendline);
+
+	//Send the filename
+	sprintf(sendline, "%s", filename);
+	if(send(s, sendline, strlen(sendline), 0)==-1){
+		perror("client send error!");
+		exit(1);
+	}
+	
+	//Clear sendline var
+	clearline(sendline);
+	
+	//Receive confirmation
+	int temp, conf;
+	if ((temp=(recv(s, &conf, sizeof(conf), 0))) == -1)    {
+		perror("client recieved error");
+		exit(1);
+	}
+	if(DEBUG==1) printf("number recieved: %i\n", conf);
+	
+	//Clear recline var
+	clearline(recline);
+	
+	if(conf==-1) {
+		printf("File does not exist on server. \n");
+		return 0;	
+	}
+	else if(conf!=1){
+		printf("Error, unexpected value.\n");
+		return 1;
+	}
+	else{
+		char yn[4];
+		printf("Are you sure you want to delete this file? (Yes/No): ");
+		scanf("%s", yn);
+		if(strcmp(yn, "Yes")==0){
+			//Send the confirmation
+			sprintf(sendline, "%s", yn);
+			if(send(s, sendline, strlen(sendline), 0)==-1){
+				perror("client send error!");
+				exit(1);
+			}
+			//Clear sendline var
+			clearline(sendline);
+			
+			int temp2, conf2;
+			if ((temp2=(recv(s, &conf2, sizeof(conf2), 0))) == -1)    {
+				perror("client recieved error");
+				exit(1);
+			}
+			if(DEBUG==1) printf("number recieved: %i\n", conf2);
+			
+			if(conf2==1) printf("File successfully deleted.\n");
+			else if(conf2==-1) printf("File NOT successfully deleted.\n");
+			else printf("Error: unexpected response from server.\n");
+		}
+		else if(strcmp(yn, "No")==0){
+			printf("Ok then.\n");
+			
+			//Send the confirmation
+			sprintf(sendline, "%s", yn);
+			if(send(s, sendline, strlen(sendline), 0)==-1){
+				perror("client send error!");
+				exit(1);
+			}
+			//Clear sendline var
+			clearline(sendline);
+			
+			return 0;
+		}
+		else{
+			printf("Invalid response. \n");
+			return 0;
+		}
+	}
+	
 	return 0;
 }
 
