@@ -17,7 +17,7 @@
 
 char sendline[MAX_LINE];
 char buf[10];
-char recline[MAX_LINE];
+char recline[1024];
 
 int opREQ(int s, char *filename);
 int opUPL(int s, char *filename);
@@ -72,10 +72,14 @@ int main(int argc, char * argv[])
 		exit(1);
 	}
 
-	printf("Pick an operation: REQ, UPL, LIS, DEL, XIT\n");
-	scanf("%s", buf);
 	//prompt user for operation state
-	while (strcmp(buf, "XIT") != 0 )	{
+	while ( strcmp(buf, "XIT") != 0 )	{
+	
+		//Clear sendline var
+		clearline(sendline);
+		printf("Pick an operation: REQ, UPL, LIS, DEL, XIT\n");
+		scanf("%s", buf);
+	
 		if(send(s, buf, strlen(buf), 0)==-1){
 			perror("client send error!");
 			exit(1);
@@ -85,7 +89,7 @@ int main(int argc, char * argv[])
 		if (strcmp(buf, "REQ") == 0)	{	
 			/* get length of file name and add it to filename string-- send
 			 *          * the combination to server*/
-			printf("Please enter a file to send:\n");
+			printf("Please enter a file to receive:\n");
 			scanf("%s", filename);
 			if(DEBUG==1) printf("file being sent: %s\n", filename);
 			int res = opREQ(s, filename);
@@ -113,11 +117,10 @@ int main(int argc, char * argv[])
 			
 			int res = opLIS(s);
 			if(res!=0) printf("LIS Error: %d\n", res);
+		} else {
+			break;
 		}
-		//Clear sendline var
-		clearline(sendline);
-		printf("Pick an operation: REQ, UPL, LIS, DEL, XIT\n");
-		scanf("%s", buf);
+
 	}
 	/* after file is received, close connection. */
 	close(s);
@@ -154,7 +157,7 @@ int opREQ(int s, char *filename){
 	clearline(sendline);
 	clearline(recline);
 
-	/* receive size of requested file from server. If negative value, error */
+	/* receive size of requested file from server. Negative value, error */
 	int file_size;
 	int temp;
 	if ((temp=(recv(s, &file_size, sizeof(file_size), 0))) == -1)    {
@@ -190,10 +193,10 @@ int opREQ(int s, char *filename){
 	while (downloaded < file_size)  {
 		//while client has not received the entire file size...
 		//if there is enough for one full packet, send full packet's worth of data
-		if ((file_size - downloaded) >= MAX_LINE)       {
-			buffer_len=MAX_LINE;
+		if ((file_size - downloaded) >= 1024)       {
+			buffer_len = 1024;
 		}       else    {
-			buffer_len=(file_size-downloaded);
+			buffer_len = (file_size-downloaded);
 		}
 
 		//receive packet from server and read into recline buffer
@@ -211,8 +214,7 @@ int opREQ(int s, char *filename){
 	gettimeofday(&end, NULL);
 	rewind(file);   //rewind file pointer to compute hash
 
-
-	/*computes MD5 Hash value based on content received, compare to original MD5 -- use same steps as computing initial hash in server */
+	/*computes MD5 Hash value based on content compare to original MD5 */
 	MD5_CTX mdContext;
 	int bytes;
 	unsigned char data[1024];
@@ -223,25 +225,36 @@ int opREQ(int s, char *filename){
 		MD5_Update (&mdContext, data, bytes);
 	MD5_Final (c,&mdContext);
 
-
-
 	/*if MD5 values don't match, signal error and exit */
-	int l;
-	for (l=0; l<sizeof(c); l++)     {
-		if (c[l]!=serverHash[l])        {
+	int l, error = 0;
+	for (l=0; l<MD5_DIGEST_LENGTH; l++){
+		if (c[l]!=serverHash[l]){
 			printf("error: hashes do not match\n");
-			exit(1);
+			error = -1;
 		}
 	}
 
-	//Say that hash matches, print out information
-	printf("Hash Matches\n");
-	printf("%i bytes transferred in %5.2f seconds\n", file_size, ((end.tv_sec + end.tv_usec/1000000.)- (start.tv_sec + start.tv_usec/1000000.)));
-	printf("Throughput: %5.3f Megabytes/sec\n", (file_size/1000000.)/((end.tv_sec+end.tv_usec/1000000.)- (start.tv_sec + start.tv_usec/1000000.)));
-	printf("File MD5sum: ");
+	//Send successful or unsuccessful req sum
+	if( send( s, &error, sizeof(error), 0) == -1){
+		exit(1);
+	}
+	
 	int j;
+	for(j = 0; j < MD5_DIGEST_LENGTH; j++) printf("%02x", serverHash[j]);
+	printf ("\n");
+	
 	for(j = 0; j < MD5_DIGEST_LENGTH; j++) printf("%02x", c[j]);
 	printf ("\n");
+	
+	if(error == 0){
+		//Say that hash matches, print out information
+		printf("Hash Matches\n");
+		printf("%i bytes transferred in %5.2f seconds\n", file_size, ((end.tv_sec + end.tv_usec/1000000.)- (start.tv_sec + start.tv_usec/1000000.)));
+		printf("Throughput: %5.3f Megabytes/sec\n", (file_size/1000000.)/((end.tv_sec+end.tv_usec/1000000.)- (start.tv_sec + start.tv_usec/1000000.)));
+		printf("File MD5sum: ");
+	}else{
+		//remove(filename);	
+	}
 	
 	return 0;
 }
@@ -281,12 +294,13 @@ int opUPL(int s, char *filename){
 	//Clear sendline var
 	clearline(sendline);
 	
-	if ((recv(s, recline, sizeof(recline), 0)) == -1){
+	int confirmation;
+	if ((recv(s, &confirmation, sizeof(confirmation), 0)) == -1){
 		perror("error receiving confirmation from server\n");
 		exit(1);
 	}
 	else{
-		printf("%s\n", recline);
+		printf("%i\n", confirmation);
 	}
 	
 	clearline(recline);
@@ -301,6 +315,15 @@ int opUPL(int s, char *filename){
 	
 	//Clear sendline var
 	clearline(sendline);
+
+	//Confirmation of receive filename
+	if ((recv(s, &confirmation, sizeof(confirmation), 0)) == -1){
+		perror("error receiving confirmation from server\n");
+		exit(1);
+	}
+	else{
+		printf("%i\n", confirmation);
+	}
 
 	// Open File
 	fp=fopen(path, "rt");
@@ -362,23 +385,23 @@ int opUPL(int s, char *filename){
 		exit(1);
 	}
 	clearline(sendline);
-
 	clearline(recline);
-	if ((recv(s, recline, sizeof(recline), 0)) == -1){
+	
+	float throughput;
+	printf("Size: %i\n", (int)sizeof(throughput));
+	if ((recv(s, &throughput, sizeof(throughput), 0)) == -1){
 		perror("error receiving confirmation from server\n");
 		exit(1);
 	}
-	printf("%s\n", recline);
-	printf("%i\n", (int)strlen(recline));
+	printf("%f\n", throughput);
 	
-	if(strcmp(recline, "-1")==0){
+	if(throughput<0){
 		printf("Transfer unsuccessful.\n");	
 	}
 	else{
-		printf("throughput: %s\n", recline);	
+		printf("Throughput: %f Megabytes/sec\n", throughput);	
 	}
-	clearline(recline);
-	
+
 	/* Close file */
 	fclose(fp);
 
@@ -502,8 +525,8 @@ int opLIS(int s){
 		else{
 			printf("filename %i: %s \n", i, recline);
 		}
-		sprintf(sendline, recline);
-		if(send(s, sendline, strlen(sendline), 0)==-1){
+		strcpy(sendline, recline);
+		if(send(s, sendline, strlen(sendline), 0) == -1){
 			perror("error sending confirmation");
 			exit(1);
 		}
