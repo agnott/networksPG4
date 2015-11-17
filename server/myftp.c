@@ -127,8 +127,6 @@ int main(int argc, char*argv[]){
 				bzero(path, 200);
 				strcat(path, info.filename);
 
-				printf("PATH: %s\n", path);
-
 				/* Check if file exists */		
 				int file_size=0;
 				if( stat(path, &st) != 0){
@@ -138,7 +136,7 @@ int main(int argc, char*argv[]){
 						perror("Error sending server's error message\n");
 						exit(1);
 					}
-					exit(1);
+					return;
 				}
 
 				/* Open File */
@@ -168,10 +166,6 @@ int main(int argc, char*argv[]){
 					MD5_Update (&mdContext, data, bytes);
 				MD5_Final (c,&mdContext);
 
-				int j;
-				for(j = 0; j < MD5_DIGEST_LENGTH; j++) printf("%02x", c[j]);
-				printf ("\n");
-
 				/* Send MD5 hash value of the file back to the client. */
 				if (send(new_s, c, sizeof(c), 0) == -1)	{
 					perror("Hash not sent successfully...\n");
@@ -199,7 +193,7 @@ int main(int argc, char*argv[]){
 				if( recv(new_s, &error, sizeof(error), 0) == -1){
 					exit(1);
 				}
-				
+
 				/* Close file */	
 				fclose(fp);
 
