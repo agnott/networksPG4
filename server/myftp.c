@@ -1,3 +1,7 @@
+//Andrew Gnott (agnott)
+//Brittany Harrington (bharrin4)
+//Nicholas Swift (nswift)
+
 #include<stdio.h>	 
 #include<stdlib.h>	  
 #include<string.h>	
@@ -40,7 +44,7 @@ int main(int argc, char*argv[]){
 		fprintf(stderr, "error: incorrect number of arguments\n");
 	}	else	{
 		//set port number to first argument.
-		portNum=atoi(argv[1]);
+		portNum = atoi(argv[1]);
 	}
 
 	/*build  address  data  structure*/
@@ -79,7 +83,7 @@ int main(int argc, char*argv[]){
 			perror("simplex-­.talk:	accept");	
 			exit(1);
 		}
-		printf("HELLO\n");
+
 		connected = 1;
 		while(connected){
 		
@@ -121,8 +125,9 @@ int main(int argc, char*argv[]){
 				//set up file path to afs directory
 				char path[200];
 				bzero(path, 200);
-				strcat(path, "/afs/nd.edu/coursefa.15/cse/cse30264.01/files/program4/");
 				strcat(path, info.filename);
+
+				printf("PATH: %s\n", path);
 
 				/* Check if file exists */		
 				int file_size=0;

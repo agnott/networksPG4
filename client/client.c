@@ -1,3 +1,6 @@
+//Andrew Gnott (agnott)
+//Brittany Harrington (bharrin4)
+//Nicholas Swift (nswift)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -212,6 +215,9 @@ int opREQ(int s, char *filename){
 	}
 	//get time once entire file has been received
 	gettimeofday(&end, NULL);
+	fclose(file);
+	
+	file = fopen(filename, "r+");
 	rewind(file);   //rewind file pointer to compute hash
 
 	/*computes MD5 Hash value based on content compare to original MD5 */
