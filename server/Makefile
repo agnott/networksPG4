@@ -1,11 +1,11 @@
 CMP = gcc
 FLAGS = -lssl -lcrypto -g -Wall
-FNAME = myftp
+FNAME = server
 
 all: server
 
 server: $(FNAME).c
-	$(CMP) $(FLAGS) $(FNAME).c -o $(FNAME)
+	$(CMP) $(FLAGS) $(FNAME).c -o myftp
 
 clean:
 	rm -f $(FNAME)
