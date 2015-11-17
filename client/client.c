@@ -16,7 +16,7 @@
 #include <openssl/md5.h>
 #define MAX_LINE 1024
 #define	MAX_FILE_SIZE 1024
-#define DEBUG 1
+#define DEBUG 0
 
 char sendline[MAX_LINE];
 char buf[10];
@@ -291,7 +291,7 @@ int opUPL(int s, char *filename){
 	short int filename_len = strlen(filename);
 	//Send length of file name
 	sprintf(sendline, "%d", filename_len);
-	printf("len: %s\n", sendline);
+	if(DEBUG==1) printf("len: %s\n", sendline);
 	if(send(s, sendline, strlen(sendline), 0)==-1){
 		perror("client send error!");
 		exit(1);
@@ -306,14 +306,14 @@ int opUPL(int s, char *filename){
 		exit(1);
 	}
 	else{
-		printf("%i\n", confirmation);
+		if(DEBUG==1) printf("%i\n", confirmation);
 	}
 	
 	clearline(recline);
 
 	//Send the filename
 	sprintf(sendline, "%s", path);
-	printf("name: %s\n", sendline);
+	if(DEBUG==1) printf("name: %s\n", sendline);
 	if(send(s, sendline, strlen(sendline), 0)==-1){
 		perror("client send error!");
 		exit(1);
@@ -328,7 +328,7 @@ int opUPL(int s, char *filename){
 		exit(1);
 	}
 	else{
-		printf("%i\n", confirmation);
+		if(DEBUG==1) printf("%i\n", confirmation);
 	}
 
 	// Open File
@@ -382,8 +382,8 @@ int opUPL(int s, char *filename){
 
 	/*if MD5 values don't match, signal error and exit */
 	int j;
-	for(j = 0; j < MD5_DIGEST_LENGTH; j++) printf("%02x", c[j]);
-	printf ("\n");
+	for(j = 0; j < MD5_DIGEST_LENGTH; j++) if(DEBUG==1) printf("%02x", c[j]);
+	if(DEBUG==1) printf ("\n");
 	
 	// Send MD5 hash value of the file back to the server.
 	if (send(s, c, sizeof(c), 0) == -1)	{
@@ -394,12 +394,12 @@ int opUPL(int s, char *filename){
 	clearline(recline);
 	
 	float throughput;
-	printf("Size: %i\n", (int)sizeof(throughput));
+	if(DEBUG==1) printf("Size: %i\n", (int)sizeof(throughput));
 	if ((recv(s, &throughput, sizeof(throughput), 0)) == -1){
 		perror("error receiving confirmation from server\n");
 		exit(1);
 	}
-	printf("%f\n", throughput);
+	if(DEBUG==1) printf("%f\n", throughput);
 	
 	if(throughput<0){
 		printf("Transfer unsuccessful.\n");	
